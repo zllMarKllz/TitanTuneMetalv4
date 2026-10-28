@@ -1,4 +1,3 @@
-
 name: Build TitanTune Metal VST3
 
 on:
@@ -10,37 +9,42 @@ on:
 
 jobs:
   build-windows-vst3:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
+      - name: Configure MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Ninja
+        shell: pwsh
+        run: choco install ninja --no-progress -y
+
       - name: Fetch Signalsmith dependencies
         shell: pwsh
         run: |
           git clone --depth 1 https://github.com/Signalsmith-Audio/linear.git linear-dependency
-
           New-Item -ItemType Directory -Force -Path "Source/signalsmith-linear" | Out-Null
-
-          Copy-Item -Path "linear-dependency/include/signalsmith-linear/*" -Destination "Source/signalsmith-linear/" -Recurse -Force
-
-          Invoke-WebRequest `
-            -Uri "https://raw.githubusercontent.com/Signalsmith-Audio/signalsmith-stretch/main/signalsmith-stretch.h" `
-            -OutFile "Source/signalsmith-stretch.h"
-
-          if (!(Test-Path "Source/signalsmith-stretch.h")) {
-            throw "Falta signalsmith-stretch.h"
+          $linearHeaderRoot = "linear-dependency/include/signalsmith-linear"
+          if (Test-Path $linearHeaderRoot) {
+            Copy-Item -Path "$linearHeaderRoot/*" -Destination "Source/signalsmith-linear/" -Recurse -Force
+          } else {
+            throw "No se encontró la carpeta include/signalsmith-linear en Signalsmith Linear."
           }
-
-          if (!(Test-Path "Source/signalsmith-linear/stft.h")) {
-            throw "Falta Signalsmith Linear stft.h"
-          }
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Signalsmith-Audio/signalsmith-stretch/main/signalsmith-stretch.h" -OutFile "Source/signalsmith-stretch.h"
+          if (!(Test-Path "Source/signalsmith-stretch.h")) { throw "No se descargó signalsmith-stretch.h" }
+          if (!(Test-Path "Source/signalsmith-linear/stft.h")) { throw "No se descargó Signalsmith Linear stft.h" }
 
       - name: Configure project
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+        shell: pwsh
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build VST3
+        shell: pwsh
         run: cmake --build build --config Release --target TitanTuneMetal_VST3
 
       - name: Upload VST3 artifact
